@@ -9,19 +9,22 @@
 
 
 #define msReadSensorDelay 1200000
+#define msWiFiCheckDelay 60000
 #define msBuzzorBeforeWateringDelay 100
 #define msWateringActiveDelay 2500
 #define msRetryAfterWateringDelay 30000
-#define moistLevel 500
+#define moistLevel 7000
 
 unsigned long lastTakeAndProcessMillis = millis();
+unsigned long lastWiFiCheckMillis = millis();
+
 
 MoistureSensor moistureSensor(A0, 12);
 Motor waterPump(13, false);
-DigitalPin buzzor(2);
+//DigitalPin buzzor(2);
 //Logger logger(9600);
 
-ESP8266WebServer server(80);
+ESP8266WebServer server(54123);
 
 void checkOrconnectToWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
@@ -42,7 +45,7 @@ void checkOrconnectToWiFi() {
 
 
 void setup(void) {
-  Serial.begin(115200); 
+  Serial.begin(115200);
 
   checkOrconnectToWiFi();
 
@@ -60,15 +63,22 @@ void setup(void) {
 
   server.begin();
   Serial.println("HTTP server started");
+
+  Serial.flush();
 }
 
 void loop(void) {
-  if (millis() - lastTakeAndProcessMillis >= msReadSensorDelay) {
+  unsigned long currentTimeMillis = millis();
+  
+  if (currentTimeMillis - lastWiFiCheckMillis >= msWiFiCheckDelay) {
+    lastWiFiCheckMillis = currentTimeMillis;
     checkOrconnectToWiFi();
-    lastTakeAndProcessMillis = millis();
+  }
+  
+  if (currentTimeMillis - lastTakeAndProcessMillis >= msReadSensorDelay) {
+    lastTakeAndProcessMillis = currentTimeMillis;
     takeAndprocessReading();
   }
-
   server.handleClient();
 }
 
@@ -148,8 +158,11 @@ void postMoistureDataToAPI(int moistureReading) {
     Serial.print(line);
   }
 
+  client.flush();
+
   Serial.println();
   Serial.println("closing connection");
+  Serial.flush();
 }
 
 
@@ -168,7 +181,7 @@ void takeAndprocessReading() {
   }
 
   Serial.println("soil dry: activating pump");
-  buzzor.toggle(msBuzzorBeforeWateringDelay);
+  //buzzor.toggle(msBuzzorBeforeWateringDelay);
   waterPump.activate(msWateringActiveDelay);
   Serial.println("reading in a few secs");
   delay(msRetryAfterWateringDelay);
