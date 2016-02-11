@@ -1,6 +1,7 @@
 #ifndef utility_h
 #define utility_h
 
+#include "Arduino.h"
 
 void checkDelayAndRun (unsigned long &lastCheckedMillis, int msCheckDelay, void (*f)(void) ) {
   unsigned long currentTimeMillis = millis();

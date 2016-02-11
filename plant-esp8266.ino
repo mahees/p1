@@ -1,4 +1,4 @@
-#include <ESP8266WiFi.h>
+#include "WiFiUtil.h"
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <MoistureSensor.h>
@@ -8,6 +8,7 @@
 #include "AnalogReader.h"
 #include "utility.h"
 #include "conf.h"
+#include "WebServerHandlers.h"
 
 #define msReadSensorDelay 1200000 //20min
 #define msWiFiCheckDelay 60000
@@ -29,41 +30,15 @@ Motor waterPump(13, false);
 
 ESP8266WebServer server(54123);
 
-void checkOrconnectToWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    return;
-  }
-
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    if (WiFi.status() == WL_CONNECT_FAILED) {
-      Serial.println("Connection failed");
-      return;
-    }
-    delay(500);
-    Serial.print(".");
-  }
-}
-
 
 void setup(void) {
   Serial.begin(115200);
 
   checkOrconnectToWiFi();
 
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  attachWebServerHandlers(server);
 
-  server.on("/", handleRoot);
-  server.on("/take-moisture-reading", takeMoistureReadingHandler);
-  server.on("/water-plant", waterPlantHandler);
-  server.on("/take-ldr-reading", getLDRReadingHandler);
-  server.on("/take-and-process-reading", takeAndprocessReadingHandler);
-  server.onNotFound(handleNotFound);
+  injectWebServerHandlerDependencies(moistureSensor, ldrSensor, waterPump);
 
   server.begin();
   Serial.println("HTTP server started");
@@ -89,20 +64,6 @@ void checkLDR() {
   postDataToAPI("field2", reading);
 }
 
-void handleRoot() {
-  server.send(200, "text/plain", "hello from esp8266!");
-}
-
-void getLDRReadingHandler() {
-  Serial.println("taking LDR reading: ");
-  int reading = ldrSensor.takeReading(2, 100);
-  Serial.println(reading);
-
-  postDataToAPI("field2", reading);
-
-  server.send(200, "text/plain", (String)reading);
-
-}
 
 int getMoistureReading() {
   Serial.println("taking reading: ");
@@ -112,37 +73,6 @@ int getMoistureReading() {
   postDataToAPI("field1", moistureReading);
 
   return moistureReading;
-}
-
-void takeMoistureReadingHandler() {
-  int moistureReading = getMoistureReading();
-
-  server.send(200, "text/plain", (String)moistureReading);
-}
-
-void takeAndprocessReadingHandler() {
-  takeAndprocessReading();
-  server.send(200, "text/plain", "takeAndprocessReading");
-}
-
-void waterPlantHandler() {
-  waterPump.activate(msWateringActiveDelay);
-  server.send(200, "text/plain", "watering plant");
-}
-
-void handleNotFound() {
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-  server.send(404, "text/plain", message);
 }
 
 

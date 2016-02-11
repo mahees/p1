@@ -18,6 +18,7 @@ class AnalogReader
 
 AnalogReader::AnalogReader(int sensorPin, int vccPin)
 {
+  
   _sensorPin = sensorPin;
   _vccPin = vccPin;
 
