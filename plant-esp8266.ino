@@ -5,27 +5,25 @@
 #include <Motor.h>
 #include <DigitalPin.h>
 #include <Logger.h>
+#include "AnalogReader.h"
+#include "utility.h"
 #include "conf.h"
 
-
-#define msReadSensorDelay 2400000 //40min
+#define msReadSensorDelay 1200000 //20min
 #define msWiFiCheckDelay 60000
 #define msBuzzorBeforeWateringDelay 100
 #define msWateringActiveDelay 2500
 #define msRetryAfterWateringDelay 30000
 #define moistLevel 7000
-#define msLDRCheckSensorDelay 120000
+#define msLDRCheckSensorDelay 300000 //5 min
 
 unsigned long lastTakeAndProcessMillis = millis();
 unsigned long lastWiFiCheckMillis = millis();
 unsigned long lastLDRCheckMillis = millis();
 
-
 MoistureSensor moistureSensor(A0, 12);
+AnalogReader ldrSensor(A0, 14);
 Motor waterPump(13, false);
-
-int ldrPin = 14;
-
 //DigitalPin buzzor(2);
 //Logger logger(9600);
 
@@ -52,9 +50,6 @@ void checkOrconnectToWiFi() {
 void setup(void) {
   Serial.begin(115200);
 
-  pinMode(ldrPin, OUTPUT);
-  digitalWrite(ldrPin, LOW);
-
   checkOrconnectToWiFi();
 
   Serial.println("");
@@ -64,7 +59,7 @@ void setup(void) {
   Serial.println(WiFi.localIP());
 
   server.on("/", handleRoot);
-  server.on("/take-reading", getReadingHandler);
+  server.on("/take-moisture-reading", takeMoistureReadingHandler);
   server.on("/water-plant", waterPlantHandler);
   server.on("/take-ldr-reading", getLDRReadingHandler);
   server.on("/take-and-process-reading", takeAndprocessReadingHandler);
@@ -77,38 +72,20 @@ void setup(void) {
 }
 
 void loop(void) {
-  unsigned long currentTimeMillis = millis();
 
-  if (currentTimeMillis - lastWiFiCheckMillis >= msWiFiCheckDelay) {
-    lastWiFiCheckMillis = currentTimeMillis;
-    checkOrconnectToWiFi();
-  }
+  checkDelayAndRun(lastWiFiCheckMillis, msWiFiCheckDelay, checkOrconnectToWiFi);
+  checkDelayAndRun(lastLDRCheckMillis, msLDRCheckSensorDelay, checkLDR);
+  checkDelayAndRun(lastTakeAndProcessMillis, msReadSensorDelay, takeAndprocessReading);
 
-  if (currentTimeMillis - lastLDRCheckMillis >= msLDRCheckSensorDelay) {
-    lastLDRCheckMillis = currentTimeMillis;
-    checkLDR();
-  }
-
-  if (currentTimeMillis - lastTakeAndProcessMillis >= msReadSensorDelay) {
-    lastTakeAndProcessMillis = currentTimeMillis;
-    takeAndprocessReading();
-  }
   server.handleClient();
 }
 
-int getLDRReading() {
-  digitalWrite(ldrPin, HIGH);
-  delay(1000);
-  int reading = analogRead(A0);
-  Serial.println((String)reading);
-
-  digitalWrite(ldrPin, LOW);
-  return reading;
-}
 
 void checkLDR() {
-  int reading = getLDRReading();
-  
+  Serial.println("taking LDR reading: ");
+  int reading = ldrSensor.takeReading(2, 100);
+  Serial.println(reading);
+
   postDataToAPI("field2", reading);
 }
 
@@ -118,21 +95,27 @@ void handleRoot() {
 
 void getLDRReadingHandler() {
   Serial.println("taking LDR reading: ");
-  int reading = getLDRReading();
+  int reading = ldrSensor.takeReading(2, 100);
   Serial.println(reading);
 
   postDataToAPI("field2", reading);
 
   server.send(200, "text/plain", (String)reading);
-  
+
 }
 
-void getReadingHandler() {
+int getMoistureReading() {
   Serial.println("taking reading: ");
   int moistureReading = moistureSensor.takeReading();
   Serial.println(moistureReading);
 
   postDataToAPI("field1", moistureReading);
+
+  return moistureReading;
+}
+
+void takeMoistureReadingHandler() {
+  int moistureReading = getMoistureReading();
 
   server.send(200, "text/plain", (String)moistureReading);
 }
@@ -141,8 +124,6 @@ void takeAndprocessReadingHandler() {
   takeAndprocessReading();
   server.send(200, "text/plain", "takeAndprocessReading");
 }
-
-
 
 void waterPlantHandler() {
   waterPump.activate(msWateringActiveDelay);
@@ -210,12 +191,7 @@ void postDataToAPI(String field, int reading) {
 
 
 void takeAndprocessReading() {
-
-  Serial.println("taking reading: ");
-  int moistureReading = moistureSensor.takeReading();
-  Serial.println(moistureReading);
-
-  postDataToAPI("field1", moistureReading);
+  int moistureReading = getMoistureReading();
 
   if (moistureReading < moistLevel)
   {
